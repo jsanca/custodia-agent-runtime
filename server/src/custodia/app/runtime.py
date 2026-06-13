@@ -11,6 +11,7 @@ from custodia.infrastructure.persistence.in_memory_audit_repository import InMem
 from custodia.infrastructure.persistence.in_memory_patient_repository import (
     InMemoryPatientRepository,
 )
+from custodia.infrastructure.prompts.in_memory_prompt_catalog import InMemoryPromptCatalog
 from custodia.infrastructure.rag.keyword_retriever import KeywordPolicyRetriever
 
 
@@ -31,6 +32,7 @@ def build_runtime() -> Runtime:
     text_generator = FakeLlm()
     audit_recorder = InMemoryAuditRepository()
     agent_guardrail = DefaultAgentGuardrails()
+    prompt_catalog = InMemoryPromptCatalog()
     auth = FakePrincipal()
 
     intake_agent = IntakeAgentService(
@@ -39,6 +41,7 @@ def build_runtime() -> Runtime:
         text_generator=text_generator,
         audit_recorder=audit_recorder,
         agent_guardrail=agent_guardrail,
+        prompt_catalog=prompt_catalog,
     )
     policy_agent = PolicyAgentService(
         policy_context_retriever=policy_context_retriever,

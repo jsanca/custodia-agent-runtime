@@ -34,7 +34,7 @@ README.md
 AGENTS.md
 ```
 
-This is **Phase 0** only. Do not implement the Intake Agent yet.
+This is **Phase 0** only. Agent services (`IntakeAgentService`, `PolicyAgentService`, `DailyBriefingService`) are scaffolded as fake/local implementations to establish the architecture. They are not production-ready features.
 
 ---
 
@@ -398,16 +398,16 @@ custodia-server
 custodia-client
 ```
 
-Initial roles:
+Initial roles (Phase 0 simplified model):
 
 ```text
 admin
-operations_manager
-intake_coordinator
-billing_staff
 clinician
-auditor
+staff
+system
 ```
+
+More granular operational roles (e.g. `operations_manager`, `intake_coordinator`, `billing_staff`, `auditor`) may be introduced in a later phase.
 
 At least one local user if practical:
 
@@ -609,11 +609,8 @@ curl http://localhost:8000/health
 
 ## What Not To Do
 
-Do not implement:
+Do not implement real versions of:
 
-* Intake Agent,
-* Policy Agent,
-* Daily Briefing,
 * Postgres repositories,
 * audit tables,
 * Keycloak JWT validation,

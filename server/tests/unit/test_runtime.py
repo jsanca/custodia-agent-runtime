@@ -4,6 +4,7 @@ from httpx import ASGITransport, AsyncClient
 from custodia.app.main import create_app
 from custodia.app.runtime import build_runtime
 from custodia.application.intake_agent import PatientNotFoundError
+from custodia.domain.agents import SuggestedAction
 from custodia.domain.identity import Principal, Role
 
 
@@ -62,8 +63,31 @@ def test_intake_agent_answers_for_known_patient() -> None:
     )
     answer = runtime.intake_agent.answer_question(
         principal=principal,
-        patient_id="PAT-001",
+        patient_id="PAT-002",
         question="What is missing for this patient?",
     )
     assert answer.is_ai_assisted is True
     assert len(answer.answer) > 0
+
+
+def test_intake_agent_always_calls_llm_even_when_documents_are_missing() -> None:
+    runtime = build_runtime()
+    principal = Principal(
+        subject="test-subject",
+        email="test@example.com",
+        roles=frozenset([Role.STAFF]),
+    )
+    answer = runtime.intake_agent.answer_question(
+        principal=principal,
+        patient_id="PAT-001",
+        question="What is missing for this patient?",
+    )
+
+    assert answer.is_ai_assisted is True
+    assert answer.requires_human_review is True
+    assert answer.suggested_actions == (
+        SuggestedAction(
+            description="Collect missing documents: Insurance verification",
+            requires_human_review=False,
+        ),
+    )

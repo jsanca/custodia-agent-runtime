@@ -3,6 +3,7 @@ from typing import Any, Protocol
 from custodia.domain.agents import AgentAnswer
 from custodia.domain.audit import AuditEvent
 from custodia.domain.patients import PatientAdministrativeProfile
+from custodia.domain.prompts import PromptTemplate
 
 
 class LoadsPatientAdministrativeProfile(Protocol):
@@ -27,4 +28,9 @@ class RetrievesPolicyContext(Protocol):
 
 class AppliesAgentGuardrails(Protocol):
     def check(self, answer: AgentAnswer, context: dict[str, Any]) -> AgentAnswer:
+        ...
+
+
+class RetrievesPromptTemplate(Protocol):
+    def get_prompt(self, prompt_key: str) -> PromptTemplate:
         ...

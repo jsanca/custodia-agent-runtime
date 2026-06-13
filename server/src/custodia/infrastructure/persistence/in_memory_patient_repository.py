@@ -1,5 +1,9 @@
 from custodia.domain.intake import IntakeStatus
-from custodia.domain.patients import IntakeDocument, PatientAdministrativeProfile
+from custodia.domain.patients import (
+    AdministrativeDocument,
+    AdministrativeDocumentType,
+    PatientAdministrativeProfile,
+)
 
 _FAKE_PATIENTS: dict[str, PatientAdministrativeProfile] = {
     "PAT-001": PatientAdministrativeProfile(
@@ -8,8 +12,14 @@ _FAKE_PATIENTS: dict[str, PatientAdministrativeProfile] = {
         preferred_language="en",
         requested_service="outpatient_therapy",
         documents=(
-            IntakeDocument(name="consent_form", status=IntakeStatus.COMPLETE),
-            IntakeDocument(name="insurance_verification", status=IntakeStatus.MISSING),
+            AdministrativeDocument(
+                document_type=AdministrativeDocumentType.CONSENT_FORM,
+                status=IntakeStatus.COMPLETE,
+            ),
+            AdministrativeDocument(
+                document_type=AdministrativeDocumentType.INSURANCE_VERIFICATION,
+                status=IntakeStatus.MISSING,
+            ),
         ),
     ),
     "PAT-002": PatientAdministrativeProfile(
@@ -18,8 +28,14 @@ _FAKE_PATIENTS: dict[str, PatientAdministrativeProfile] = {
         preferred_language="es",
         requested_service="intake_assessment",
         documents=(
-            IntakeDocument(name="consent_form", status=IntakeStatus.PENDING_REVIEW),
-            IntakeDocument(name="insurance_verification", status=IntakeStatus.COMPLETE),
+            AdministrativeDocument(
+                document_type=AdministrativeDocumentType.CONSENT_FORM,
+                status=IntakeStatus.PENDING_REVIEW,
+            ),
+            AdministrativeDocument(
+                document_type=AdministrativeDocumentType.INSURANCE_VERIFICATION,
+                status=IntakeStatus.COMPLETE,
+            ),
         ),
     ),
 }

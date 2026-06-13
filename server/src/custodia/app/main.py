@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from custodia.app.runtime import Runtime, build_runtime
+from custodia.interfaces.api.intake_routes import intake_router
 from custodia.interfaces.api.middleware import RequestIdMiddleware
 from custodia.interfaces.api.routes import router
 
@@ -18,6 +19,7 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
     app = FastAPI(title="Custodia", lifespan=lifespan)
     app.add_middleware(RequestIdMiddleware)
     app.include_router(router)
+    app.include_router(intake_router)
 
     if runtime is not None:
         # Allow tests to inject a pre-built runtime before lifespan runs.
