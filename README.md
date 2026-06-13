@@ -562,7 +562,6 @@ Example evaluation case:
 ### Phase 0: Project Skeleton
 
 - Create backend Python project.
-- Create frontend TypeScript project.
 - Add Docker Compose.
 - Add Postgres.
 - Add Keycloak local configuration.
@@ -665,24 +664,23 @@ Backend API
 Frontend Console
 ```
 
-Planned commands:
-
 ```bash
+# Start infrastructure
 docker compose up -d
-cd backend
-uv sync
-uv run pytest
-uv run ruff check .
-uv run mypy .
-uv run fastapi dev src/custodia/app/main.py
-```
 
-Frontend commands:
+# Install backend dependencies
+cd server && uv sync
 
-```bash
-cd frontend
-npm install
-npm run dev
+# Run all backend checks (tests + lint + types)
+make server-check
+
+# Or individually:
+make server-test       # pytest
+make server-lint       # ruff
+make server-typecheck  # mypy
+
+# Run dev server
+cd server && uv run fastapi dev src/custodia/app/main.py
 ```
 
 ---

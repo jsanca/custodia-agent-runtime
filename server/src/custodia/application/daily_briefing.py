@@ -20,11 +20,11 @@ class DailyBriefing:
 class DailyBriefingService:
     def __init__(
         self,
-        llm: GeneratesText,
-        audit: SavesAuditEvents,
+        text_generator: GeneratesText,
+        audit_recorder: SavesAuditEvents,
     ) -> None:
-        self._llm = llm
-        self._audit = audit
+        self._text_generator = text_generator
+        self._audit_recorder = audit_recorder
 
     def generate(
         self,
@@ -40,9 +40,9 @@ class DailyBriefingService:
             "Provide a brief, factual administrative summary for the operations team. "
             "Do not include clinical recommendations."
         )
-        summary = self._llm.generate(prompt)
+        summary = self._text_generator.generate(prompt)
 
-        self._audit.save(
+        self._audit_recorder.save(
             AuditEvent(
                 action=AuditAction.DAILY_BRIEFING_GENERATED,
                 actor_subject=principal.subject,

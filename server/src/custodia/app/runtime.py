@@ -26,28 +26,28 @@ class Runtime:
 def build_runtime() -> Runtime:
     settings = CustodiaSettings()
 
-    profiles = InMemoryPatientRepository()
-    policies = KeywordPolicyRetriever()
-    llm = FakeLlm()
-    audit = InMemoryAuditRepository()
-    guardrails = DefaultAgentGuardrails()
+    patient_profile_loader = InMemoryPatientRepository()
+    policy_context_retriever = KeywordPolicyRetriever()
+    text_generator = FakeLlm()
+    audit_recorder = InMemoryAuditRepository()
+    agent_guardrail = DefaultAgentGuardrails()
     auth = FakePrincipal()
 
     intake_agent = IntakeAgentService(
-        profiles=profiles,
-        policies=policies,
-        llm=llm,
-        audit=audit,
-        guardrails=guardrails,
+        patient_profile_loader=patient_profile_loader,
+        policy_context_retriever=policy_context_retriever,
+        text_generator=text_generator,
+        audit_recorder=audit_recorder,
+        agent_guardrail=agent_guardrail,
     )
     policy_agent = PolicyAgentService(
-        policies=policies,
-        llm=llm,
-        audit=audit,
+        policy_context_retriever=policy_context_retriever,
+        text_generator=text_generator,
+        audit_recorder=audit_recorder,
     )
     daily_briefing = DailyBriefingService(
-        llm=llm,
-        audit=audit,
+        text_generator=text_generator,
+        audit_recorder=audit_recorder,
     )
 
     return Runtime(

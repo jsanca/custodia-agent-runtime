@@ -1,159 +1,123 @@
 # AGENTS.md
 
-Architecture rules and hard constraints for Custodia. See `CLAUDE.md` for dev commands and operational quick-start.
+Architecture rules, hard constraints, and repo conventions for Custodia. Companion file: `CLAUDE.md` (Claude Code).
+
+---
+
+## Project Layout
+
+```
+server/        # Python backend (uv, FastAPI, hexagonal architecture)
+client/        # TypeScript frontend (no code yet)
+docker/        # Docker Compose: Postgres, Keycloak, Jaeger
+docs/          # Architecture docs, decision records, task specs
+```
+
+**All backend commands run from `server/`.**
+
+---
+
+## Commands (run from `server/`)
+
+```bash
+docker compose up -d                           # start infra (Postgres, Keycloak, Jaeger)
+uv sync                                        # install dependencies
+uv run fastapi dev src/custodia/app/main.py    # dev server (hot reload on port 8000)
+uv run ruff check .                            # lint
+uv run mypy .                                  # type check (strict mode)
+uv run pytest                                  # all tests
+uv run pytest tests/unit/test_runtime.py       # single test file
+uv run pytest -k "test_health"                 # tests matching name
+```
 
 ---
 
 ## Architecture
 
-Custodia follows a **hexagonal, Go-style** pattern (not Spring/Java):
+Hexagonal, Go-style. Layer dependencies flow inward:
 
 ```
 interfaces  →  application  →  domain
-infrastructure  →  application/domain protocols
-server/src/custodia/app/runtime.py  →  composition root (wires everything)
+infrastructure  →  application/domain protocols only
+app/runtime.py  →  composition root (wires everything)
 ```
-
-The backend lives under `server/` (not `backend/`). The frontend lives under `client/`.
 
 ### Layer import rules
 
-- `domain` — must not import from application, infrastructure, interfaces, or any framework (FastAPI, SQLAlchemy, LLM SDKs, Keycloak, MCP)
-- `application` — may import `domain` and define `typing.Protocol` ports; must not import infrastructure or interfaces
-- `infrastructure` — may import `domain` and implement application protocols; should not import application services
-- `interfaces` — may import `application` and DTOs; must not contain business logic
-- `app/runtime.py` — may import everything (composition only)
+| Layer | May import | Must NOT import |
+|---|---|---|
+| `domain` | stdlib, each other | application, infrastructure, interfaces, any framework (FastAPI, SQLAlchemy, LLM SDKs, Keycloak, MCP) |
+| `application` | domain, `typing.Protocol` | infrastructure, interfaces |
+| `infrastructure` | domain | application services |
+| `interfaces` | application, DTOs | — (must not contain business logic) |
+| `app` | everything (composition only) | — |
+
+### Patterns
+
+- **Ports**: small `typing.Protocol` classes in `application/ports.py`, named after role: `LoadsPatientAdministrativeProfile`, `GeneratesText`, `SavesAuditEvents`, `RetrievesPolicyContext`, `AppliesAgentGuardrails`
+- **Runtime composition**: `build_runtime()` in `app/runtime.py` manually instantiates and wires all adapters — no DI container
+- **Services**: depend on protocols, never on concrete infrastructure. Never instantiate DB clients, LLM SDKs, or HTTP clients in service constructors.
+- **Route handlers**: thin — validate input, delegate to application service, return DTO. No business logic in routes.
+- **Domain objects**: `@dataclass(frozen=True)`, `StrEnum` for symbolic values. Map DB rows → domain objects explicitly; ORM models are not domain objects.
+- **Duplicate nothing**: API routes, jobs, and MCP tools all call the same application services.
 
 ---
 
-## Protocols (Ports)
+## Current Phase — Phase 0 (Project Skeleton)
 
-Protocols must be **small** and named after what the consumer needs:
+**Only FAKE implementations exist. Do NOT add real LLM, Postgres, Keycloak, vector store, or MCP implementations.**
 
-```python
-class LoadsPatientAdministrativeProfile(Protocol):
-    def load(self, patient_id: str) -> PatientAdministrativeProfile | None: ...
+| Type | Files |
+|---|---|
+| **FAKE** | `FakeLlm` — hardcoded strings<br>`FakePrincipal` — hardcoded staff user<br>`InMemoryPatientRepository` — seeds PAT-001 (complete), PAT-002 (missing docs)<br>`InMemoryAuditRepository` — append-only list<br>`KeywordPolicyRetriever` — keyword matching, no embeddings |
+| **STUB** (empty `__init__.py`) | `infrastructure/observability/`, `interfaces/jobs/`, `interfaces/mcp/` |
 
-class GeneratesText(Protocol):
-    def generate(self, prompt: str) -> str: ...
-```
-
-Never create large catch-all interfaces (e.g., a `PatientRepository` with `save`/`load`/`delete`/`find_all`/`find_by_email`). A concrete adapter may implement several small protocols, but each use case depends only on the capabilities it needs.
-
----
-
-## Domain Models
-
-- Use `@dataclass(frozen=True)` for domain objects
-- Use `StrEnum` for symbolic values
-- Never put database sessions, HTTP clients, FastAPI request objects, or LLM SDK objects in domain models
-- Map DB rows → domain objects explicitly; don't let ORM models become domain objects
-
----
-
-## Application Services
-
-Application services depend on protocols, never on concrete infrastructure:
-
-```python
-class IntakeAgentService:
-    def __init__(
-        self,
-        profiles: LoadsPatientAdministrativeProfile,
-        llm: GeneratesText,
-        audit: SavesAuditEvents,
-        guardrails: AppliesAgentGuardrails,
-    ): ...
-```
-
-They must not instantiate database clients, LLM SDKs, Keycloak validators, or HTTP clients directly.
-
----
-
-## Runtime Composition
-
-Use **manual DI** in `runtime.py` — no DI container:
-
-```python
-def build_runtime() -> Runtime:
-    profiles = InMemoryPatientRepository()
-    llm = FakeLlm()
-    audit = PostgresAuditRepository(...)
-    guardrails = DefaultAgentGuardrails()
-    intake_agent = IntakeAgentService(profiles=profiles, llm=llm, audit=audit, guardrails=guardrails)
-    return Runtime(intake_agent=intake_agent)
-```
-
-Keep it boring, explicit, and readable.
+Active task specs: `docs/tasks/`.
 
 ---
 
 ## Testing
 
-- Application service tests use fakes (`FakeLlm`, `FakeAuth`, in-memory repos) — never real LLM APIs, Keycloak, or network
-- Concrete adapter tests (Postgres, API) go in integration tests
-- LLM behavior evaluations live under `server/tests/evals/`
+- `pytest-asyncio` is in `auto` mode — no `@pytest.mark.asyncio` marker needed for async tests (use it explicitly only when `scope` is required)
+- HTTP tests: `httpx.AsyncClient(transport=ASGITransport(app=app))` — no real server
+- Inject pre-built `Runtime` via `create_app(runtime=...)` for test isolation
+- Application service tests use fakes only — never real LLMs, Keycloak, or network
+- Concrete adapter tests → `tests/integration/`. LLM behavior evals → `tests/evals/`.
 
 ---
 
-## PHI and Logging Boundaries
+## Naming Conventions
 
-**Must never appear in logs or prompts:**
-- raw PHI (names, identifiers beyond patient IDs)
-- full prompts (by default)
-- full LLM responses (by default)
-- access tokens, secrets, API keys
+Favor explicit names that describe *responsibility*, not implementation type. This is a learning-project convention.
 
-Logs should be structured and include trace IDs, agent run IDs, and tool names — not personal data. Audit events and observability traces are separate concerns.
-
----
-
-## Audit Events
-
-Audit records compliance-relevant business events (separate from structured logging). Events convey who did what to which resource, with outcome and human-review flag. Do not store raw PHI in audit metadata.
+- **Constructor parameters**: name after the protocol role, not a vague noun or implementation class. Prefer `patient_profile_loader`, `policy_context_retriever`, `text_generator`, `audit_recorder`, `agent_guardrail` over `profiles`, `policies`, `llm`, `audit`, `guardrails`
+- **Loop variables in comprehensions**: descriptive (`document` not `d`)
+- **Result variables**: describe what it contains (`missing_document_names`, `retrieved_policy_chunks`, `raw_llm_answer`, `guarded_answer` — not `missing`, `chunks`, `raw`, `answer2`)
 
 ---
 
 ## Healthcare Guardrails (Hard Constraints)
 
-**The system must not:**
+**Must NOT:**
 - diagnose, recommend treatment, or replace clinicians
 - assess self-harm risk
 - make final clinical decisions
 - let LLMs decide authorization or bypass deterministic business rules
 
-**The system may:**
-- summarize administrative status, retrieve policies, draft messages
-- classify missing documents, suggest operational next steps
-- flag items for human review
+**May:** summarize administrative status, retrieve policies, draft messages, classify missing documents, flag items for human review.
 
-Guardrail checks must be explicit and testable. When unsure, require human review.
+Guardrail checks in `application/guardrails.py` use keyword-based detection. When unsure, require human review.
 
 ---
 
-## Tools and Commands
+## PHI Boundaries
 
-- Package manager: `uv`
-- Lint: `ruff check .`
-- Type check: `mypy .`
-- Test: `pytest` (single test: `pytest -k "name"`)
-- Dev server: `fastapi dev`
-- See `CLAUDE.md` for full command reference.
+Must never appear in logs or prompts: raw PHI (names, identifiers beyond patient IDs), full prompts/LLM responses (by default), access tokens, secrets, API keys.
+
+Audit events and observability traces are separate concerns.
 
 ---
 
-## Current Phase
+## Audit Events
 
-**Phase 0 — Project Skeleton.** Only the minimal FastAPI app, runtime composition, domain stubs, and test infrastructure exist. Do not add real LLM, Postgres, Keycloak, vector store, or MCP implementation until later phases. Active task specs live in `docs/tasks/`.
-
----
-
-## Key Principles
-
-1. Deterministic code first, AI only where it adds value
-2. Audit every compliance-relevant action
-3. Never duplicate business logic across API routes, jobs, and MCP tools — all call the same application services
-4. Route handlers must be thin (validate, delegate to application service, return DTO)
-5. Keep PHI out of logs and prompts
-6. Require human review for sensitive actions
-7. Write tests with fakes before using real providers
+Defined in `domain/audit.py`. Separate from structured logs. Each event records: who did what to which resource, outcome, and human-review flag. Do not store raw PHI in audit metadata.

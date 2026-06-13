@@ -18,17 +18,17 @@ class PatientNotFoundError(Exception):
 class IntakeAgentService:
     def __init__(
         self,
-        profiles: LoadsPatientAdministrativeProfile,
-        policies: RetrievesPolicyContext,
-        llm: GeneratesText,
-        audit: SavesAuditEvents,
-        guardrails: AppliesAgentGuardrails,
+        patient_profile_loader: LoadsPatientAdministrativeProfile,
+        policy_context_retriever: RetrievesPolicyContext,
+        text_generator: GeneratesText,
+        audit_recorder: SavesAuditEvents,
+        agent_guardrail: AppliesAgentGuardrails,
     ) -> None:
-        self._profiles = profiles
-        self._policies = policies
-        self._llm = llm
-        self._audit = audit
-        self._guardrails = guardrails
+        self._patient_profile_loader = patient_profile_loader
+        self._policy_context_retriever = policy_context_retriever
+        self._text_generator = text_generator
+        self._audit_recorder = audit_recorder
+        self._agent_guardrail = agent_guardrail
 
     def answer_question(
         self,
@@ -36,11 +36,11 @@ class IntakeAgentService:
         patient_id: str,
         question: str,
     ) -> AgentAnswer:
-        profile = self._profiles.load(patient_id)
-        if profile is None:
+        patient_profile = self._patient_profile_loader.load(patient_id)
+        if patient_profile is None:
             raise PatientNotFoundError(patient_id)
 
-        self._audit.save(
+        self._audit_recorder.save(
             AuditEvent(
                 action=AuditAction.INTAKE_PROFILE_VIEWED,
                 actor_subject=principal.subject,
@@ -52,34 +52,48 @@ class IntakeAgentService:
             )
         )
 
-        missing = [d.name for d in profile.documents if d.status == IntakeStatus.MISSING]
-        pending = [d.name for d in profile.documents if d.status == IntakeStatus.PENDING_REVIEW]
+        missing_document_names = [
+            document.name
+            for document in patient_profile.documents
+            if document.status == IntakeStatus.MISSING
+        ]
+        pending_review_document_names = [
+            document.name
+            for document in patient_profile.documents
+            if document.status == IntakeStatus.PENDING_REVIEW
+        ]
 
-        policy_chunks = self._policies.retrieve(question)
+        retrieved_policy_chunks = self._policy_context_retriever.retrieve(question)
 
-        prompt = self._build_prompt(question, profile.display_name, missing, pending, policy_chunks)
-        raw_answer = self._llm.generate(prompt)
+        prompt = self._build_prompt(
+            question,
+            patient_profile.display_name,
+            missing_document_names,
+            pending_review_document_names,
+            retrieved_policy_chunks,
+        )
+        raw_llm_answer = self._text_generator.generate(prompt)
 
-        requires_review = len(missing) > 0
+        requires_review = len(missing_document_names) > 0
         actions: tuple[SuggestedAction, ...] = ()
-        if missing:
+        if missing_document_names:
             actions = (
                 SuggestedAction(
-                    description=f"Collect missing documents: {', '.join(missing)}",
+                    description=f"Collect missing documents: {', '.join(missing_document_names)}",
                     requires_human_review=False,
                 ),
             )
 
-        answer = AgentAnswer(
-            answer=raw_answer,
+        guarded_answer = AgentAnswer(
+            answer=raw_llm_answer,
             suggested_actions=actions,
             requires_human_review=requires_review,
-            source_references=tuple(policy_chunks),
+            source_references=tuple(retrieved_policy_chunks),
             is_ai_assisted=True,
         )
-        answer = self._guardrails.check(answer, {"patient_id": patient_id})
+        guarded_answer = self._agent_guardrail.check(guarded_answer, {"patient_id": patient_id})
 
-        self._audit.save(
+        self._audit_recorder.save(
             AuditEvent(
                 action=AuditAction.INTAKE_AGENT_ANSWERED,
                 actor_subject=principal.subject,
@@ -89,29 +103,29 @@ class IntakeAgentService:
                 resource_type="patient",
                 resource_id=patient_id,
                 agent_name="IntakeAgentService",
-                human_review_required=answer.requires_human_review,
+                human_review_required=guarded_answer.requires_human_review,
             )
         )
 
-        return answer
+        return guarded_answer
 
     def _build_prompt(
         self,
         question: str,
         display_name: str,
-        missing: list[str],
-        pending: list[str],
-        policy_chunks: list[str],
+        missing_document_names: list[str],
+        pending_review_document_names: list[str],
+        retrieved_policy_chunks: list[str],
     ) -> str:
         parts = [
             f"Question: {question}",
             f"Patient display name: {display_name}",
-            f"Missing documents: {missing or 'none'}",
-            f"Pending review: {pending or 'none'}",
+            f"Missing documents: {missing_document_names or 'none'}",
+            f"Pending review: {pending_review_document_names or 'none'}",
         ]
-        if policy_chunks:
+        if retrieved_policy_chunks:
             parts.append("Relevant policy context:")
-            parts.extend(f"- {chunk}" for chunk in policy_chunks)
+            parts.extend(f"- {chunk}" for chunk in retrieved_policy_chunks)
         parts.append(
             "Provide an administrative answer only. "
             "Do not give clinical advice or make clinical judgments."
