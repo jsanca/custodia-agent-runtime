@@ -551,7 +551,7 @@ Example evaluation case:
 
 ## Roadmap
 
-### Phase -1: Project Name and GitHub Repository
+### Phase -1: Project Name and GitHub Repository (CLOSED/PASS)
 
 - Choose project name.
 - Create GitHub repository.
@@ -559,7 +559,7 @@ Example evaluation case:
 - Add AGENTS.md.
 - Define initial architecture and project scope.
 
-### Phase 0: Project Skeleton
+### Phase 0: Project Skeleton (CLOSED/PASS)
 
 - Create backend Python project.
 - Add Docker Compose.
@@ -570,7 +570,7 @@ Example evaluation case:
 - Add pytest, ruff, and mypy.
 - Add initial CI-friendly commands.
 
-### Phase 1: Intake Agent
+### Phase 1: Intake Agent (CLOSED/PASS)
 
 - Define patient administrative profile model.
 - Define intake document model.
@@ -580,6 +580,49 @@ Example evaluation case:
 - Implement `IntakeAgentService`.
 - Add API endpoint.
 - Add unit tests.
+
+### Phase 1.5: Real Text Generator Adapter (NEXT)
+
+Phase 1 closed the first complete Intake Agent vertical slice using fake/local infrastructure. The system can now receive an HTTP request, load a fake patient administrative profile, retrieve fake policy context, render a prompt, call a fake text generator, apply guardrails, audit the interaction, and return an API response.
+
+Phase 1.5 introduces the first real LLM adapter while preserving the same application architecture.
+
+The goal is to prove that `IntakeAgentService` can switch from a fake text generator to a real provider without changing domain or application logic.
+
+Scope:
+
+* Add a real text generation adapter behind the existing `GeneratesText` / text generator port.
+* Keep `FakeLlm` as the default for local and test environments.
+* Make the LLM provider configurable through settings.
+* Add provider settings such as API key, model name, timeout, and environment selection.
+* Keep prompt retrieval through `PromptTemplate` and `InMemoryPromptCatalog`.
+* Do not add real RAG/vector search yet.
+* Do not add Keycloak JWT validation yet.
+* Do not add Postgres repositories yet.
+* Do not add cachetools yet.
+* Do not add frontend work.
+
+Expected behavior:
+
+* In local/test mode, Custodia continues to use `FakeLlm`.
+* In a configured non-local mode, Custodia can use a real LLM provider through an infrastructure adapter.
+* Unit tests must never require a real API key.
+* No test should call a real external LLM.
+* The application service must continue depending only on the text generation port.
+
+Important safety note:
+
+Before enabling a real LLM provider, review what patient administrative data is included in prompts. Patient display names and other potentially identifying data should be reconsidered before any real provider call. The initial real adapter should be treated as a controlled development integration, not a production PHI-ready configuration.
+
+Acceptance criteria:
+
+* `make server-check` passes.
+* All tests pass without real network calls.
+* The fake LLM remains the default in local/test.
+* The real LLM adapter is isolated under infrastructure.
+* Domain and application layers remain free of provider SDK imports.
+* API endpoint behavior remains unchanged from the caller's perspective.
+
 
 ### Phase 2: RAG Over Internal Policies
 
